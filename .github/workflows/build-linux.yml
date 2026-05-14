@@ -1,0 +1,82 @@
+name: Build Linux Static Binary
+
+on:
+  push:
+    branches: [develop, master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version label for artifact naming (e.g., v0.34.3)'
+        required: false
+        type: string
+        default: 'latest'
+      profile:
+        description: 'Build profile'
+        required: false
+        type: choice
+        default: 'release'
+        options:
+          - release
+          - debug
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Linux x86_64 (static musl)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: |
+          cargo build \
+            --profile ${{ inputs.profile }} \
+            --target x86_64-unknown-linux-musl
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+
+      - name: Verify static binary
+        run: |
+          BIN=target/x86_64-unknown-linux-musl/${{ inputs.profile }}/rtk
+          echo "### Binary info" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          file "$BIN" >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          readelf -d "$BIN" 2>&1 | head -5 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          file "$BIN" | grep -qi "statically linked" || {
+            echo "::error::Binary is NOT statically linked!"
+            file "$BIN"
+            exit 1
+          }
+          echo "::notice::Binary is statically linked ✓"
+
+      - name: Package
+        run: |
+          VERSION="${{ inputs.version }}"
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-musl/${{ inputs.profile }}/rtk "dist/rtk-linux-amd64"
+          cd dist
+          tar -czvf "../rtk-linux-amd64-${VERSION}.tar.gz" rtk-linux-amd64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtk-linux-amd64-${{ inputs.version }}
+          path: rtk-linux-amd64-${{ inputs.version }}.tar.gz
