@@ -338,7 +338,7 @@ pub fn run(
     }
 
     if !dry_run {
-        prompt_telemetry_consent()?;
+        save_telemetry_consent(false)?;
     }
 
     if dry_run {
