@@ -60,7 +60,7 @@ jobs:
           echo '' >> $GITHUB_STEP_SUMMARY
           readelf -d "$BIN" 2>&1 | head -5 >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          file "$BIN" | grep -qi "statically linked" || {
+          file "$BIN" | grep -qiE "statically linked|static-pie linked" || {
             echo "::error::Binary is NOT statically linked!"
             file "$BIN"
             exit 1
