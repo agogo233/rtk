@@ -46,14 +46,14 @@ jobs:
       - name: Build
         run: |
           cargo build \
-            --profile ${{ inputs.profile }} \
+            --profile ${{ inputs.profile || 'release' }} \
             --target x86_64-unknown-linux-musl
         env:
           RUSTFLAGS: -C target-feature=+crt-static
 
       - name: Verify static binary
         run: |
-          BIN=target/x86_64-unknown-linux-musl/${{ inputs.profile }}/rtk
+          BIN=target/x86_64-unknown-linux-musl/${{ inputs.profile || 'release' }}/rtk
           echo "### Binary info" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           file "$BIN" >> $GITHUB_STEP_SUMMARY
@@ -69,14 +69,14 @@ jobs:
 
       - name: Package
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ inputs.version || github.ref_name }}"
           mkdir -p dist
-          cp target/x86_64-unknown-linux-musl/${{ inputs.profile }}/rtk "dist/rtk-linux-amd64"
+          cp target/x86_64-unknown-linux-musl/${{ inputs.profile || 'release' }}/rtk "dist/rtk-linux-amd64"
           cd dist
           tar -czvf "../rtk-linux-amd64-${VERSION}.tar.gz" rtk-linux-amd64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rtk-linux-amd64-${{ inputs.version }}
-          path: rtk-linux-amd64-${{ inputs.version }}.tar.gz
+          name: rtk-linux-amd64-${{ inputs.version || github.ref_name }}
+          path: rtk-linux-amd64-${{ inputs.version || github.ref_name }}.tar.gz
