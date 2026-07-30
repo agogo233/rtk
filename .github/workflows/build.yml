@@ -109,7 +109,7 @@ jobs:
             --profile ${{ inputs.profile || 'release' }} `
             --target ${{ matrix.target }}
         env:
-          RUSTFLAGS: -C target-feature=+crt-static
+          RUSTFLAGS: ${{ matrix.target == 'x86_64-pc-windows-msvc' && '-C target-feature=+crt-static' || '' }}
 
       - name: Verify binary
         shell: pwsh
