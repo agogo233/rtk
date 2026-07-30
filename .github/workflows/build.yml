@@ -106,7 +106,14 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ matrix.target }}" -eq "x86_64-pc-windows-gnu") {
-            $env:CARGO_PROFILE_RELEASE_PANIC = "unwind"
+            $wrapper = @'
+          @echo off
+          set "args=%*"
+          set "args=%args:/STACK:=-Wl,--stack,%"
+          x86_64-w64-mingw32-gcc %args%
+          '@
+            $wrapper | Out-File -FilePath "$env:TEMP\linkwrap.cmd" -Encoding ascii
+            $env:CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = "$env:TEMP\linkwrap.cmd"
           }
           cargo build `
             --profile ${{ inputs.profile || 'release' }} `
