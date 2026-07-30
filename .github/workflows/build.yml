@@ -105,6 +105,9 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
+          if ("${{ matrix.target }}" -eq "x86_64-pc-windows-gnu") {
+            $env:CARGO_PROFILE_RELEASE_PANIC = "unwind"
+          }
           cargo build `
             --profile ${{ inputs.profile || 'release' }} `
             --target ${{ matrix.target }}
