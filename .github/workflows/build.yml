@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -150,3 +151,32 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}-${{ inputs.version || github.ref_name }}
           path: ${{ matrix.artifact_name }}-${{ inputs.version || github.ref_name }}.zip
+
+  release:
+    name: Create Release (latest)
+    needs: [build-linux]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rtk-linux-amd64-${{ inputs.version || github.ref_name }}
+          path: dist
+
+      - name: Extract binary
+        run: |
+          cd dist
+          tar -xzf rtk-linux-amd64-*.tar.gz
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Release
+          files: dist/rtk-linux-amd64
+          prerelease: false
+          generate_release_notes: true
