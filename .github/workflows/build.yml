@@ -154,7 +154,7 @@ jobs:
   release:
     name: Create Release (latest)
     needs: [build-linux]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
