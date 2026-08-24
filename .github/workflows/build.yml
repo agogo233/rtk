@@ -20,7 +20,6 @@ on:
           - dev
 
 permissions:
-  contents: read
   contents: write
 
 env:
