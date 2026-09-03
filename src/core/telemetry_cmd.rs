@@ -89,8 +89,7 @@ pub fn run(command: &TelemetrySubcommand) -> Result<()> {
 /// Returns true when telemetry is explicitly disabled through the
 /// `RTK_TELEMETRY_DISABLED` env var (value `"1"`).
 ///
-/// Single source of truth for the env opt-out so the consent prompt
-/// (`init::prompt_telemetry_consent`), the status command, and
+/// Single source of truth for the env opt-out so the status command and
 /// `telemetry::maybe_ping` never diverge — if the accepted values ever grow
 /// (e.g. `"true"`, `"y"`), they change here once.
 pub fn telemetry_disabled_by_env() -> bool {
