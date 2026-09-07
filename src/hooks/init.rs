@@ -3535,7 +3535,7 @@ pub fn run_pi_mode_with_patch_mode(
         path
     };
 
-    let installed = ensure_pi_plugin_installed(&plugin_path, ctx)?;
+    let installed = write_if_changed_allow_read_error(&plugin_path, PI_PLUGIN, "Pi extension", ctx)?;
 
     if dry_run {
         print_dry_run_footer();
