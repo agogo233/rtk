@@ -193,10 +193,9 @@ impl AgentPath {
         match agent {
             // `copilot` reads Claude Code's settings rather than a Copilot file
             // (see `hook_cmd`'s `vscode_response` and `copilot_cli_response`).
-            "antigravity" | "cline" | "codex" | "kilocode" | "kimi" | "windsurf" => {
-                Some(Self::RulesOnly)
-            }
+            "antigravity" | "cline" | "kilocode" | "kimi" | "windsurf" => Some(Self::RulesOnly),
             "claude" | "copilot" => Some(Self::InProcess(Host::Claude)),
+            "codex" => Some(Self::InProcess(Host::Codex)),
             "cursor" => Some(Self::InProcess(Host::Cursor)),
             "droid" => Some(Self::InProcess(Host::Droid)),
             "gemini" => Some(Self::InProcess(Host::Gemini)),
@@ -406,6 +405,20 @@ mod tests {
         assert!(AgentPath::lookup("nope").is_none());
         assert!(AgentPath::lookup("").is_none());
         assert!(AgentPath::lookup("Claude").is_none());
+    }
+
+    #[test]
+    fn codex_uses_shared_decision_without_claiming_permission() {
+        assert!(matches!(
+            AgentPath::lookup("codex"),
+            Some(AgentPath::InProcess(Host::Codex))
+        ));
+        assert_eq!(
+            check_command_for("git status", Host::Codex),
+            PermissionVerdict::Default
+        );
+        let (deny, ask, allow) = super::super::permissions::load_rules_for(Host::Codex);
+        assert!(deny.is_empty() && ask.is_empty() && allow.is_empty());
     }
 
     /// A rules-file agent has no hook and no permission rules, so its answer
