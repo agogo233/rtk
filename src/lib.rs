@@ -15,7 +15,7 @@ use cmds::dotnet::{binlog, dotnet_cmd, dotnet_format_report, dotnet_trx};
 use cmds::git::{diff_cmd, gh_cmd, git_cmd, glab_cmd, gt_cmd};
 use cmds::go::{go_cmd, golangci_cmd};
 use cmds::js::{
-    bun_cmd, deno_cmd, lint_cmd, next_cmd, npm_cmd, playwright_cmd, pnpm_cmd, prettier_cmd,
+    bun_cmd, deno_cmd, lint_cmd, next_cmd, ng_cmd, npm_cmd, playwright_cmd, pnpm_cmd, prettier_cmd,
     prisma_cmd, tsc_cmd, vitest_cmd,
 };
 use cmds::jvm::{gradlew_cmd, mvn_cmd};
@@ -651,6 +651,13 @@ enum Commands {
     /// TypeScript compiler with grouped error output
     Tsc {
         /// TypeScript compiler arguments
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Angular build with compact tables; other commands pass through
+    #[command(disable_help_flag = true, disable_version_flag = true)]
+    Ng {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -2477,11 +2484,29 @@ fn require_single_script(subcommand: &str, shell: Option<&str>, command: &[Strin
         .exit();
 }
 
-fn run_cli() -> Result<i32> {
-    // Fire-and-forget telemetry ping (1/day, non-blocking)
-    core::telemetry::maybe_ping();
+/// Whether this invocation runs the daily telemetry ping. A parsed
+/// `rtk hook …` command does not: the hook processors run before every
+/// command an agent runs. Anything clap rejects (help, version, a
+/// passthrough command) still runs it.
+fn pings_telemetry(parsed: &Result<Cli, clap::Error>) -> bool {
+    !matches!(
+        parsed,
+        Ok(Cli {
+            command: Commands::Hook { .. },
+            ..
+        })
+    )
+}
 
-    let cli = match try_parse_cli_from(std::env::args_os()) {
+fn run_cli() -> Result<i32> {
+    let parsed = try_parse_cli_from(std::env::args_os());
+
+    // Fire-and-forget telemetry ping (1/day, non-blocking)
+    if pings_telemetry(&parsed) {
+        core::telemetry::maybe_ping();
+    }
+
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(e) => {
             if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
@@ -3348,6 +3373,8 @@ fn run_cli() -> Result<i32> {
 
         Commands::Next { args } => next_cmd::run(&args, cli.verbose)?,
 
+        Commands::Ng { args } => ng_cmd::run(&args, cli.verbose)?,
+
         Commands::Lint { args } => lint_cmd::run(None, &args, cli.verbose)?,
 
         Commands::Prettier { args } => prettier_cmd::run(&args, cli.verbose)?,
@@ -4008,6 +4035,8 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Git { .. }
             | Commands::Gh { .. }
             | Commands::Glab { .. }
+            | Commands::Aws { .. }
+            | Commands::Psql { .. }
             | Commands::Pnpm { .. }
             | Commands::Err { .. }
             | Commands::Test { .. }
@@ -4026,12 +4055,14 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Rg { .. }
             | Commands::AstGrep { .. }
             | Commands::Wget { .. }
+            | Commands::Wc { .. }
             | Commands::Jest { .. }
             | Commands::Vitest { .. }
             | Commands::Ctest { .. }
             | Commands::Prisma { .. }
             | Commands::Tsc { .. }
             | Commands::Next { .. }
+            | Commands::Ng { .. }
             | Commands::Lint { .. }
             | Commands::Prettier { .. }
             | Commands::Playwright { .. }
@@ -4042,6 +4073,7 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Ruff { .. }
             | Commands::Sqlfluff { .. }
             | Commands::Pytest { .. }
+            | Commands::Mypy { .. }
             | Commands::Php { .. }
             | Commands::Phpunit { .. }
             | Commands::Phpstan { .. }
@@ -4056,6 +4088,9 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Pip { .. }
             | Commands::Uv { .. }
             | Commands::Go { .. }
+            | Commands::Gradlew { .. }
+            | Commands::Mvn { .. }
+            | Commands::Mvnd { .. }
             | Commands::Sbt { .. }
             | Commands::GolangciLint { .. }
             | Commands::Gt { .. }
@@ -4077,6 +4112,30 @@ mod tests {
             let cli = Cli::try_parse_from(["rtk", framework, "src/a.test.js"])
                 .expect("rtk <framework> <path> parses");
             assert!(is_operational_command(&cli.command), "{framework}");
+        }
+    }
+
+    #[test]
+    fn test_hook_rewritten_commands_get_the_hook_integrity_check() {
+        let commands: &[&[&str]] = &[
+            &["aws", "s3", "ls"],
+            &["psql", "-c", "select 1"],
+            &["wc", "-l", "src/lib.rs"],
+            &["mypy", "src"],
+            &["gradlew", "build"],
+            &["mvn", "test"],
+            &["mvnd", "test"],
+        ];
+
+        for args in commands {
+            let mut argv = vec!["rtk"];
+            argv.extend_from_slice(args);
+            let cli = Cli::try_parse_from(argv).expect("hook-rewritten command parses");
+            assert!(
+                is_operational_command(&cli.command),
+                "{} must receive the hook-integrity check",
+                args[0]
+            );
         }
     }
 
@@ -4607,6 +4666,7 @@ mod tests {
             "prisma",
             "tsc",
             "next",
+            "ng",
             "lint",
             "prettier",
             "playwright",
@@ -5163,6 +5223,35 @@ mod tests {
     }
 
     #[test]
+    fn hook_commands_skip_the_telemetry_ping() {
+        for args in [&["rtk", "hook", "claude"][..], &["rtk", "hook", "codex"]] {
+            assert!(
+                !pings_telemetry(&try_parse_cli_from(args)),
+                "{args:?} must not ping"
+            );
+        }
+    }
+
+    #[test]
+    fn other_invocations_still_run_the_ping() {
+        for args in [
+            &["rtk", "ls"][..],
+            &["rtk", "gain"],
+            &["rtk", "--help"],
+            &["rtk", "--version"],
+            // Rejected by clap: an unknown command runs through the fallback,
+            // and a hook with a bad flag never reaches the hook processor.
+            &["rtk", "uname", "-s"],
+            &["rtk", "hook", "claude", "--bogus"],
+        ] {
+            assert!(
+                pings_telemetry(&try_parse_cli_from(args)),
+                "{args:?} must ping"
+            );
+        }
+    }
+
+    #[test]
     fn test_hook_trae_parses() {
         let cli = try_parse_cli_from(["rtk", "hook", "trae"]);
         assert!(cli.is_ok());
@@ -5612,6 +5701,25 @@ mod tests {
             code, 134,
             "rtk crashed with SIGABRT (exit 134) on broken pipe - SIGPIPE handler missing"
         );
+    }
+
+    #[test]
+    fn ng_native_flags_and_separator_reach_the_filter() {
+        for flags in [
+            vec!["build", "--help"],
+            vec!["build", "--verbose"],
+            vec!["build", "--watch"],
+            vec!["build", "--output-path", "dist folder"],
+            vec!["build", "--", "--help"],
+        ] {
+            let mut argv = vec!["rtk", "ng"];
+            argv.extend(flags.iter().copied());
+            let cli = Cli::try_parse_from(argv).unwrap();
+            match cli.command {
+                Commands::Ng { args } => assert_eq!(args, flags),
+                _ => panic!("expected Angular command"),
+            }
+        }
     }
 
     #[test]

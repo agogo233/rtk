@@ -2329,6 +2329,37 @@ mod tests {
     }
 
     #[test]
+    fn ng_build_rewrite_keeps_native_arguments_and_a_narrow_command_scope() {
+        assert_eq!(
+            rewrite_command_no_prefixes("ng build app --output-path 'dist folder'", &[]),
+            Some("rtk ng build app --output-path 'dist folder'".into())
+        );
+        for command in [
+            "ng test",
+            "ng serve",
+            "ng b",
+            "ng builder",
+            "ng-build",
+            "nginx build",
+            "yarn ng build",
+            "npm run ng -- build",
+            "npx ng build",
+            "node_modules/.bin/ng build",
+            "./node_modules/.bin/ng build",
+            "/opt/bin/ng build",
+        ] {
+            let rewritten = rewrite_command_no_prefixes(command, &[]);
+            assert!(
+                !rewritten
+                    .as_deref()
+                    .is_some_and(|text| text.starts_with("rtk ng ")),
+                "{command}: {rewritten:?}"
+            );
+        }
+        assert_eq!(rewrite_command_no_prefixes("ng build | cat", &[]), None);
+    }
+
+    #[test]
     fn test_shell_wrapper_positions_match_where_the_rewrite_reaches() {
         let prefixes = normalize_transparent_prefixes(&["direnv exec .".to_string()]);
         for (cmd, reached) in [
@@ -3594,6 +3625,32 @@ mod tests {
             rewrite_command_no_prefixes("ctest -R smoke --output-on-failure", &[]),
             Some("rtk ctest -R smoke --output-on-failure".into())
         );
+    }
+
+    #[test]
+    fn test_rewrite_dotnet_subcommands() {
+        for sub in ["build", "restore"] {
+            assert_eq!(
+                rewrite_command_no_prefixes(&format!("dotnet {}", sub), &[]),
+                Some(format!("rtk dotnet {}", sub)),
+                "dotnet {} should rewrite",
+                sub
+            );
+        }
+        // Trailing args are preserved (the \b stops at the subcommand).
+        assert_eq!(
+            rewrite_command_no_prefixes("dotnet restore --force", &[]),
+            Some("rtk dotnet restore --force".into())
+        );
+        // `rtk dotnet test` and `rtk dotnet format` change what the native
+        // command does (#4603, #4602), so they are not routed until fixed.
+        assert_eq!(rewrite_command_no_prefixes("dotnet test", &[]), None);
+        assert_eq!(rewrite_command_no_prefixes("dotnet format", &[]), None);
+        // Subcommands without a proxy must NOT be rewritten.
+        assert_eq!(rewrite_command_no_prefixes("dotnet publish", &[]), None);
+        assert_eq!(rewrite_command_no_prefixes("dotnet run", &[]), None);
+        // Word boundary guards against false prefixes.
+        assert_eq!(rewrite_command_no_prefixes("dotnet builder", &[]), None);
     }
 
     #[test]
@@ -8342,6 +8399,7 @@ mod tests {
             "pest"
         );
     }
+
     /// `jj` is covered only by a TOML filter, never by the native RULES table,
     /// so the bare case pins the TOML branch of the rewrite path and keeps the
     /// wrapper assertions below from passing vacuously when TOML is disabled.
